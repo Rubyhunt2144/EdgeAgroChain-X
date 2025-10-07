@@ -1,0 +1,187 @@
+[
+  {
+    "id": "api_flow_tab",
+    "type": "tab",
+    "label": "EdgeAgroChain-X API Backend",
+    "disabled": false,
+    "info": "Complete Node-RED backend API for EdgeAgroChain-X agricultural monitoring system.\n\nProvides REST API endpoints for:\n- Real-time sensor data\n- Historical data\n- Decision engine\n- Actuator control\n\nImport this flow into Node-RED and access the dashboard at http://localhost:1880/api/sensors"
+  },
+  {
+    "id": "http_in_sensors",
+    "type": "http in",
+    "z": "api_flow_tab",
+    "name": "GET /api/sensors",
+    "url": "/api/sensors",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 100,
+    "wires": [["generate_sensor_data"]]
+  },
+  {
+    "id": "generate_sensor_data",
+    "type": "function",
+    "z": "api_flow_tab",
+    "name": "Generate Sensor Readings",
+    "func": "// Initialize context storage for sensor values if not exists\nif (!context.sensorValues) {\n    context.sensorValues = {\n        soil: 45,\n        temperature: 24,\n        humidity: 65,\n        light: 450,\n        co2: 420,\n        water: 2.5\n    };\n}\n\nconst EMA_FACTOR = 0.3;\nconst values = context.sensorValues;\n\n// Sensor configurations\nconst configs = {\n    soil: { name: \"Soil Moisture\", unit: \"%\", min: 0, max: 100, optimal: { min: 40, max: 70 }, variance: 8 },\n    temperature: { name: \"Temperature\", unit: \"°C\", min: 0, max: 50, optimal: { min: 18, max: 28 }, variance: 3 },\n    humidity: { name: \"Humidity\", unit: \"%\", min: 0, max: 100, optimal: { min: 50, max: 80 }, variance: 10 },\n    light: { name: \"Light Intensity\", unit: \"lux\", min: 0, max: 1000, optimal: { min: 300, max: 800 }, variance: 120 },\n    co2: { name: \"CO₂ Level\", unit: \"ppm\", min: 300, max: 1000, optimal: { min: 400, max: 600 }, variance: 45 },\n    water: { name: \"Water Flow\", unit: \"L/min\", min: 0, max: 10, optimal: { min: 2, max: 5 }, variance: 0.8 }\n};\n\nconst sensors = [];\n\n// Generate readings for each sensor\nfor (const [type, config] of Object.entries(configs)) {\n    // Generate random change with occasional spikes\n    const randomChange = (Math.random() - 0.5) * config.variance * 2;\n    const spike = Math.random() < 0.05 ? (Math.random() - 0.5) * config.variance * 4 : 0;\n    const targetValue = values[type] + randomChange + spike;\n    \n    // Apply EMA smoothing\n    const smoothedValue = EMA_FACTOR * targetValue + (1 - EMA_FACTOR) * values[type];\n    \n    // Clamp to min/max\n    const clampedValue = Math.max(config.min, Math.min(config.max, smoothedValue));\n    values[type] = clampedValue;\n    \n    // Determine status\n    let status;\n    if (clampedValue >= config.optimal.min && clampedValue <= config.optimal.max) {\n        status = \"optimal\";\n    } else if (clampedValue >= config.optimal.min - 10 && clampedValue <= config.optimal.max + 10) {\n        status = \"warning\";\n    } else {\n        status = \"critical\";\n    }\n    \n    sensors.push({\n        id: `${type}-${Date.now()}`,\n        type: type,\n        name: config.name,\n        value: Math.round(clampedValue * 10) / 10,\n        unit: config.unit,\n        min: config.min,\n        max: config.max,\n        optimal: config.optimal,\n        timestamp: new Date().toISOString(),\n        status: status\n    });\n}\n\n// Save updated values back to context\ncontext.sensorValues = values;\n\nmsg.payload = {\n    success: true,\n    timestamp: new Date().toISOString(),\n    sensors: sensors\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 100,
+    "wires": [["http_response_sensors", "store_sensor_history"]]
+  },
+  {
+    "id": "http_response_sensors",
+    "type": "http response",
+    "z": "api_flow_tab",
+    "name": "Return Sensor Data",
+    "statusCode": "200",
+    "headers": {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "x": 660,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "store_sensor_history",
+    "type": "function",
+    "z": "api_flow_tab",
+    "name": "Store History",
+    "func": "// Store last 100 readings in context\nif (!context.history) {\n    context.history = [];\n}\n\ncontext.history.push({\n    timestamp: new Date().toISOString(),\n    sensors: msg.payload.sensors\n});\n\n// Keep only last 100 entries\nif (context.history.length > 100) {\n    context.history = context.history.slice(-100);\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 640,
+    "y": 160,
+    "wires": [[]]
+  },
+  {
+    "id": "http_in_history",
+    "type": "http in",
+    "z": "api_flow_tab",
+    "name": "GET /api/history",
+    "url": "/api/history",
+    "method": "get",
+    "upload": false,
+    "x": 140,
+    "y": 220,
+    "wires": [["get_history"]]
+  },
+  {
+    "id": "get_history",
+    "type": "function",
+    "z": "api_flow_tab",
+    "name": "Get History",
+    "func": "const history = context.history || [];\n\nmsg.payload = {\n    success: true,\n    count: history.length,\n    history: history\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 360,
+    "y": 220,
+    "wires": [["http_response_history"]]
+  },
+  {
+    "id": "http_response_history",
+    "type": "http response",
+    "z": "api_flow_tab",
+    "name": "",
+    "statusCode": "200",
+    "headers": {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "x": 590,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "http_in_decisions",
+    "type": "http in",
+    "z": "api_flow_tab",
+    "name": "GET /api/decisions",
+    "url": "/api/decisions",
+    "method": "get",
+    "upload": false,
+    "x": 150,
+    "y": 320,
+    "wires": [["generate_decision"]]
+  },
+  {
+    "id": "generate_decision",
+    "type": "function",
+    "z": "api_flow_tab",
+    "name": "AI Decision Engine",
+    "func": "// Get current sensor values from context\nconst values = context.sensorValues || {};\n\nconst configs = {\n    soil: { name: \"Soil Moisture\", unit: \"%\", optimal: { min: 40, max: 70 } },\n    temperature: { name: \"Temperature\", unit: \"°C\", optimal: { min: 18, max: 28 } },\n    humidity: { name: \"Humidity\", unit: \"%\", optimal: { min: 50, max: 80 } },\n    light: { name: \"Light Intensity\", unit: \"lux\", optimal: { min: 300, max: 800 } },\n    co2: { name: \"CO₂ Level\", unit: \"ppm\", optimal: { min: 400, max: 600 } },\n    water: { name: \"Water Flow\", unit: \"L/min\", optimal: { min: 2, max: 5 } }\n};\n\nlet issue = \"System Normal\";\nlet decision = \"Continue monitoring\";\nlet rationale = \"All sensors within acceptable ranges\";\nlet action = \"No action required\";\nlet severity = \"success\";\nlet confidence = 0.95;\n\n// Check for critical conditions\nfor (const [type, config] of Object.entries(configs)) {\n    const value = values[type];\n    \n    if (value < config.optimal.min - 10 || value > config.optimal.max + 10) {\n        severity = \"critical\";\n        confidence = 0.88;\n        \n        if (type === \"soil\" && value < config.optimal.min) {\n            issue = \"Critical: Low Soil Moisture\";\n            decision = \"Activate irrigation immediately\";\n            rationale = `Soil moisture at ${value}% is critically below optimal range (${config.optimal.min}-${config.optimal.max}%). Immediate irrigation required.`;\n            action = \"AUTO: Irrigation system activated at 80% intensity\";\n        } else if (type === \"temperature\" && value > config.optimal.max) {\n            issue = \"Critical: High Temperature\";\n            decision = \"Activate cooling and ventilation\";\n            rationale = `Temperature at ${value}°C exceeds safe threshold. Risk of heat stress.`;\n            action = \"AUTO: Ventilation activated, misting system engaged\";\n        }\n        break;\n    } else if (value < config.optimal.min || value > config.optimal.max) {\n        severity = \"warning\";\n        confidence = 0.82;\n        issue = `Warning: ${config.name} approaching limits`;\n        decision = \"Prepare corrective measures\";\n        rationale = `${config.name} at ${value}${config.unit} is outside optimal range.`;\n        action = \"STANDBY: Monitoring closely\";\n    }\n}\n\nmsg.payload = {\n    success: true,\n    decision: {\n        id: `decision-${Date.now()}`,\n        timestamp: new Date().toISOString(),\n        issue: issue,\n        sensorValues: values,\n        decision: decision,\n        rationale: rationale,\n        action: action,\n        severity: severity,\n        confidence: confidence\n    }\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 390,
+    "y": 320,
+    "wires": [["http_response_decisions"]]
+  },
+  {
+    "id": "http_response_decisions",
+    "type": "http response",
+    "z": "api_flow_tab",
+    "name": "",
+    "statusCode": "200",
+    "headers": {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "x": 630,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "http_in_actuators",
+    "type": "http in",
+    "z": "api_flow_tab",
+    "name": "POST /api/actuators",
+    "url": "/api/actuators",
+    "method": "post",
+    "upload": false,
+    "x": 160,
+    "y": 420,
+    "wires": [["control_actuators"]]
+  },
+  {
+    "id": "control_actuators",
+    "type": "function",
+    "z": "api_flow_tab",
+    "name": "Control Actuators",
+    "func": "// Initialize actuator states if not exists\nif (!context.actuators) {\n    context.actuators = {\n        irrigation: { status: \"auto\", intensity: 0 },\n        ventilation: { status: \"auto\", intensity: 0 },\n        lighting: { status: \"off\", intensity: 0 },\n        heating: { status: \"auto\", intensity: 0 }\n    };\n}\n\nconst command = msg.payload;\n\nif (command.actuatorId && context.actuators[command.actuatorId]) {\n    if (command.status) {\n        context.actuators[command.actuatorId].status = command.status;\n    }\n    if (command.intensity !== undefined) {\n        context.actuators[command.actuatorId].intensity = command.intensity;\n    }\n}\n\nmsg.payload = {\n    success: true,\n    actuators: context.actuators,\n    message: \"Actuator updated successfully\"\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 400,
+    "y": 420,
+    "wires": [["http_response_actuators"]]
+  },
+  {
+    "id": "http_response_actuators",
+    "type": "http response",
+    "z": "api_flow_tab",
+    "name": "",
+    "statusCode": "200",
+    "headers": {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    },
+    "x": 640,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "comment_api_info",
+    "type": "comment",
+    "z": "api_flow_tab",
+    "name": "EdgeAgroChain-X REST API Endpoints",
+    "info": "Available API Endpoints:\n\n1. GET /api/sensors\n   - Returns current sensor readings\n   - Updates every call with realistic variations\n\n2. GET /api/history\n   - Returns last 100 sensor readings\n   - Useful for charts and trends\n\n3. GET /api/decisions\n   - Returns AI decision based on current sensors\n   - Includes issue, decision, rationale, action\n\n4. POST /api/actuators\n   - Control actuators (irrigation, ventilation, etc.)\n   - Body: { actuatorId: 'irrigation', status: 'on', intensity: 80 }\n\nCORS enabled for all endpoints.",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  }
+]
