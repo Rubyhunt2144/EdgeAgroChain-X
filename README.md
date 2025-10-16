@@ -1,9 +1,9 @@
 # 🌾 **EdgeAgroChain-X — Smart Agriculture IoT System**
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge\&logo=vercel)](https://edgeagrochain-x.vercel.app/)
-[![Built with Node-RED](https://img.shields.io/badge/Backend-Node--RED-red?style=for-the-badge\&logo=nodered)](https://nodered.org/)
-[![Frontend Next.js](https://img.shields.io/badge/Frontend-Next.js%2014-blue?style=for-the-badge\&logo=next.js)](https://nextjs.org/)
-[![Prototyped with v0.app](https://img.shields.io/badge/UI%20Prototyped%20with-v0.app-purple?style=for-the-badge\&logo=v0)](https://v0.app/chat/projects/yicGJoZaMzj)
+[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://edgeagrochain-x.vercel.app/)
+[![Built with Node-RED](https://img.shields.io/badge/Backend-Node--RED-red?style=for-the-badge&logo=nodered)](https://nodered.org/)
+[![Frontend Next.js](https://img.shields.io/badge/Frontend-Next.js%2014-blue?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Prototyped with v0.app](https://img.shields.io/badge/UI%20Prototyped%20with-v0.app-purple?style=for-the-badge&logo=v0)](https://v0.app/chat/projects/yicGJoZaMzj)
 
 ---
 
@@ -22,7 +22,7 @@ It enables **real-time environmental monitoring**, **AI-powered decision-making*
 
 ### 🌱 What It Does
 
-* Monitors environmental conditions using IoT sensors
+* Monitors environmental conditions using IoT sensors (incl. GPS)
 * Analyzes and smooths sensor data with EMA (Exponential Moving Average)
 * Generates AI-based irrigation and control recommendations
 * Triggers actuators automatically or via manual override
@@ -40,17 +40,17 @@ It enables **real-time environmental monitoring**, **AI-powered decision-making*
 
 #### 🧠 **Node-RED Backend**
 
-* Provides REST API endpoints: `/sensors`, `/history`, `/decisions`, `/actuators`
-* Simulates realistic sensor values with variance & smoothing
-* Runs an **AI Decision Engine** for context-aware automation
-* Supports **local/offline operation**
+* REST API endpoints: `/api/sensors`, `/api/history`, `/api/decisions`, `/api/actuators`
+* Realistic sensor simulation with GPS fields (latitude, longitude, altitude, speed, satellites)
+* AI Decision Engine (rule-based; can plug in Edge Impulse)
+* Works fully offline
 
 #### 💻 **Next.js Frontend**
 
 * Real-time visualization of all sensors
-* Interactive analytics & EMA charts
-* Alert and decision panels
-* Fully responsive, minimal design built with **TailwindCSS**
+* GPS details card (not a gauge)
+* Alerts, decisions, analytics, actuator control
+* TailwindCSS UI
 
 ---
 
@@ -58,68 +58,88 @@ It enables **real-time environmental monitoring**, **AI-powered decision-making*
 
 | Feature                           | Description                                                                  |
 | --------------------------------- | ---------------------------------------------------------------------------- |
-| 🌡️ **Dynamic Sensor Simulation** | Realistic data for temperature, humidity, soil moisture, and light intensity |
-| 🤖 **AI Decision Engine**         | Severity-based recommendations for smart irrigation                          |
+| 🌡️ **Dynamic Sensor Simulation** | Realistic data (temp, humidity, soil moisture, light, CO₂, GPS)              |
+| 🤖 **AI Decision Engine**         | Severity-based recommendations; Edge Impulse ready                           |
 | 📊 **Advanced Analytics**         | Real-time trends with EMA smoothing                                          |
 | ⚙️ **Actuator Automation**        | Auto/manual device control modes                                             |
 | 🚨 **Real-Time Alerts**           | Threshold-based environmental alerts                                         |
 | 🧭 **Offline Operation**          | Works completely without internet                                            |
-| 📄 **Reports & Logs**             | Summarized actions and decisions                                             |
-| 🧱 **Modern Stack**               | Next.js 14 + TailwindCSS + Node-RED                                          |
+| 🧱 **Modern Stack**               | Next.js 14 + TailwindCSS + Node-RED + InfluxDB + Grafana                     |
 
 ---
 
-## ⚙️ **Setup Instructions**
+## ⚙️ **Run with Docker (recommended)**
 
-### 🔹 1. Clone the Repository
+Services/ports:
+- Node-RED: http://localhost:1880
+- InfluxDB 1.8: http://localhost:8086 (health: `/ping` → 204)
+- Grafana: http://localhost:3000
+- Frontend: http://localhost:3002
+- MQTT (Mosquitto): mqtt://localhost:1883 (TCP; use an MQTT client)
+- Fabric Gateway (mock): http://localhost:4000 (GET `/` OK, POST `/tx/reading`)
+
+Start everything (Windows PowerShell):
+```powershell
+# from anywhere
+docker compose -f E:\edgeagrochain\docker-compose.yml up -d --build
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+Import Node-RED flows (UI):
+- Open http://localhost:1880 → Menu → Import → choose:
+  - `EdgeAgroChain-X/public/node-red-backend-api.json`
+- Click Deploy
+
+Quick health checks:
+```powershell
+Invoke-WebRequest http://localhost:1880/api/sensors -UseBasicParsing | % Content
+Invoke-WebRequest http://localhost:8086/ping -UseBasicParsing | % StatusCode
+Invoke-WebRequest http://localhost:4000/ -UseBasicParsing | % Content
+$body = @{ sensorId="soil-1"; timestamp=(Get-Date).ToString("o"); value=42.5 } | ConvertTo-Json
+Invoke-WebRequest http://localhost:4000/tx/reading -Method POST -ContentType application/json -Body $body | % Content
+```
+
+> Note: If `/api/decisions` returns empty `sensorValues`, call `/api/sensors` first or seed defaults in the “AI Decision Engine” function.
+
+---
+
+## 🔧 **Local Development (Frontend only)**
 
 ```bash
-git clone https://github.com/<your-username>/EdgeAgroChain-X.git
+# from repo root
 cd EdgeAgroChain-X
-```
-
-### 🔹 2. Install Frontend Dependencies
-
-```bash
-cd frontend
 npm install
-```
-
-### 🔹 3. Import Node-RED Flow
-
-1. Open **Node-RED**
-2. Menu → **Import**
-3. Import `backend/node-red-backend-api.json`
-4. Click **Deploy**
-
-### 🔹 4. Configure Environment Variables
-
-Create a `.env.local` file in `/frontend`:
-
-```
-NEXT_PUBLIC_API_URL=http://localhost:1880
-PORT=3000
-```
-
-### 🔹 5. Run Frontend Locally
-
-```bash
 npm run dev
+# http://localhost:3000
 ```
 
-Then open **[http://localhost:3000](http://localhost:3000)**
+Environment example: `EdgeAgroChain-X/env.example`
 
 ---
 
-## 🛰️ **Offline & Local Mode**
+## 🧠 **Edge Impulse (optional)**
 
-✅ **100% Offline Functionality**
+*Train a TinyML model and run via Node-RED Exec or JS runner.*
+```powershell
+npm i -g edge-impulse-cli
+E:\edgeagrochain\edge-impulse\edge-impulse.ps1
+```
 
-* Node-RED runs locally and generates live sensor data
-* Frontend connects to `http://localhost:1880`
-* No internet, no third-party APIs required
+---
 
-Perfect for **rural farm deployment**, **research labs**, or **edge devices**.
+## 🤝 **Federated Learning (Flower) — optional**
+
+Three terminals:
+```powershell
+E:\edgeagrochain\.venv\Scripts\python.exe E:\edgeagrochain\fl\flower\server.py
+E:\edgeagrochain\.venv\Scripts\python.exe E:\edgeagrochain\fl\flower\client.py
+E:\edgeagrochain\.venv\Scripts\python.exe E:\edgeagrochain\fl\flower\client.py
+```
+
+AI MQTT consumer:
+```powershell
+E:\edgeagrochain\.venv\Scripts\python.exe E:\edgeagrochain\ai\mqtt_consumer_predict.py
+```
 
 ---
 
@@ -140,14 +160,7 @@ Perfect for **rural farm deployment**, **research labs**, or **edge devices**.
 
 ## 🧾 **Research Context**
 
-Developed as part of a **research initiative** exploring:
-
-* Edge-based IoT architectures
-* Sustainable agriculture through intelligent automation
-* Real-time AI decision systems
-* Integration of **data analytics**, **automation**, and **smart farming**
-
-**EdgeAgroChain-X** demonstrates how **AI at the edge** can optimize resource use and empower precision farming.
+Developed as part of a **research initiative** integrating IoT, Edge AI, Federated Learning, Blockchain logging, and modern web dashboards for precision farming.
 
 ---
 
@@ -166,22 +179,9 @@ Developed as part of a **research initiative** exploring:
 
 ```
 EdgeAgroChain-X/
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── hooks/
-│   ├── public/
-│   ├── lib/
-│   ├── .env.example
-│   └── package.json
-│
-├── backend/
-│   └── node-red-backend-api.json
-│
-└── docs/
-    ├── setup-guide.md
-    ├── architecture-diagram.png
-    └── api-endpoints.md
+├── app/ components/ hooks/ lib/ public/ styles/
+├── env.example
+└── (Docker stack, Node-RED flows, docs live at repo root)
 ```
 
 ---
@@ -191,25 +191,22 @@ EdgeAgroChain-X/
 * ⚡ **Next.js 14**
 * 🎨 **TailwindCSS**
 * 🔴 **Node-RED**
-* 🧮 **EMA (Exponential Moving Average)**
+* 📈 **InfluxDB 1.8** + **Grafana**
+* 🧮 **EMA** (smoothing)
 * 💻 **TypeScript / JavaScript**
-* ☁️ **Vercel (Deployment)**
 
 ---
 
 ## 📜 **License**
 
-**MIT License © 2025 Ahzaz Ahmed**
-Open-source and free for educational and research use.
+**MIT License © 2025 Ahzaz Ahmed** — Open-source and free for educational and research use.
 
 ---
 
 ## 🌟 **Support the Project**
 
-If you like **EdgeAgroChain-X**, please:
-
 * ⭐ Star this repository
 * 🔄 Fork & contribute
-* 💬 Share feedback and new ideas
+* 💬 Share feedback and ideas
 
 > “Empowering sustainable agriculture through edge intelligence.” 🌱
